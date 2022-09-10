@@ -21,6 +21,10 @@ type UpstreamPacketListener interface {
 
 // ListenConfig may be used to pass additional configuration to a Listener.
 type ListenConfig struct {
+	// ProtocolVersion represents the protocol version to use over the network. If set to zero, this is updated to
+	// currentProtocol.
+	ProtocolVersion byte
+
 	// ErrorLog is a logger that errors from packet decoding are logged to. It may be set to a logger that
 	// simply discards the messages.
 	ErrorLog *log.Logger
@@ -52,6 +56,9 @@ type Listener struct {
 	// connection sequence of RakNet.
 	id int64
 
+	// protocol is the protocol version that should be sent to clients.
+	protocol byte
+
 	// pongData is a byte slice of data that is sent in an unconnected pong packet each time the client sends
 	// and unconnected ping to the server.
 	pongData atomic.Value[[]byte]
@@ -78,14 +85,18 @@ func (l ListenConfig) Listen(address string) (*Listener, error) {
 		return nil, &net.OpError{Op: "listen", Net: "raknet", Source: nil, Addr: nil, Err: err}
 	}
 	listener := &Listener{
-		conn:     conn,
-		incoming: make(chan *Conn),
 		closed:   make(chan struct{}),
-		log:      log.New(os.Stderr, "", log.LstdFlags),
+		conn:     conn,
 		id:       listenerID.Inc(),
+		incoming: make(chan *Conn),
+		log:      log.New(os.Stderr, "", log.LstdFlags),
+		protocol: currentProtocol,
 	}
 	if l.ErrorLog != nil {
 		listener.log = l.ErrorLog
+	}
+	if l.ProtocolVersion != 0 {
+		listener.protocol = l.ProtocolVersion
 	}
 
 	go listener.listen()
@@ -266,10 +277,10 @@ func (listener *Listener) handleOpenConnectionRequest1(b *bytes.Buffer, addr net
 		mtuSize = maxMTUSize
 	}
 
-	if packet.Protocol != currentProtocol {
-		(&message.IncompatibleProtocolVersion{ServerGUID: listener.id, ServerProtocol: currentProtocol}).Write(b)
+	if packet.Protocol != listener.protocol {
+		(&message.IncompatibleProtocolVersion{ServerGUID: listener.id, ServerProtocol: listener.protocol}).Write(b)
 		_, _ = listener.conn.WriteTo(b.Bytes(), addr)
-		return fmt.Errorf("error handling open connection request 1: incompatible protocol version %v (listener protocol = %v)", packet.Protocol, currentProtocol)
+		return fmt.Errorf("error handling open connection request 1: incompatible protocol version %v (listener protocol = %v)", packet.Protocol, listener.protocol)
 	}
 
 	(&message.OpenConnectionReply1{ServerGUID: listener.id, Secure: false, ServerPreferredMTUSize: mtuSize}).Write(b)

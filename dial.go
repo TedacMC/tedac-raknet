@@ -83,6 +83,10 @@ func DialContext(ctx context.Context, address string) (*Conn, error) {
 // Dialer allows dialing a RakNet connection with specific configuration, such as the protocol version of the
 // connection and the logger used.
 type Dialer struct {
+	// ProtocolVersion represents the protocol version to use over the network. If set to zero, this is updated to
+	// currentProtocol.
+	ProtocolVersion byte
+
 	// ErrorLog is a logger that errors from packet decoding are logged to. It may be set to a logger that
 	// simply discards the messages.
 	ErrorLog *log.Logger
@@ -225,9 +229,13 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 	}
 	state := &connState{
 		conn:               udpConn,
-		remoteAddr:         udpConn.RemoteAddr(),
 		discoveringMTUSize: 1492,
 		id:                 id,
+		protocol:           currentProtocol,
+		remoteAddr:         udpConn.RemoteAddr(),
+	}
+	if dialer.ProtocolVersion != 0 {
+		state.protocol = dialer.ProtocolVersion
 	}
 	wrap := func(ctx context.Context, err error) error {
 		return &net.OpError{Op: "dial", Net: "raknet", Source: nil, Addr: nil, Err: err}
@@ -303,6 +311,9 @@ type connState struct {
 	conn       net.Conn
 	remoteAddr net.Addr
 	id         int64
+
+	// protocol is the protocol version of the connection. It is set when the connection is opened.
+	protocol byte
 
 	// mtuSize is the final MTU size found by sending open connection request 1 packets. It is the MTU size
 	// sent by the server.
@@ -445,7 +456,7 @@ func (state *connState) discoverMTUSize(ctx context.Context) (e error) {
 			if err := response.Read(buffer); err != nil {
 				return fmt.Errorf("error reading incompatible protocol version: %v", err)
 			}
-			return fmt.Errorf("mismatched protocol: client protocol = %v, server protocol = %v", currentProtocol, response.ServerProtocol)
+			return fmt.Errorf("mismatched protocol: client protocol = %v, server protocol = %v", state.protocol, response.ServerProtocol)
 		}
 	}
 }
@@ -463,7 +474,7 @@ func (state *connState) sendOpenConnectionRequest2(mtu uint16) error {
 // error is returned.
 func (state *connState) sendOpenConnectionRequest1(mtu uint16) error {
 	b := bytes.NewBuffer(nil)
-	(&message.OpenConnectionRequest1{Protocol: currentProtocol, MaximumSizeNotDropped: mtu}).Write(b)
+	(&message.OpenConnectionRequest1{Protocol: state.protocol, MaximumSizeNotDropped: mtu}).Write(b)
 	_, err := state.conn.Write(b.Bytes())
 	return err
 }
