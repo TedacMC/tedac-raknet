@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/df-mc/atomic"
 	"github.com/tedacmc/tedac-raknet/internal/message"
+	"golang.org/x/exp/slices"
 	"log"
 	"math"
 	"math/rand"
@@ -21,9 +22,9 @@ type UpstreamPacketListener interface {
 
 // ListenConfig may be used to pass additional configuration to a Listener.
 type ListenConfig struct {
-	// ProtocolVersion represents the protocol version to use over the network. If set to zero, this is updated to
+	// ProtocolVersions represents the protocol versions to allow over the network. If empty, this will just contain
 	// currentProtocol.
-	ProtocolVersion byte
+	ProtocolVersions []byte
 
 	// ErrorLog is a logger that errors from packet decoding are logged to. It may be set to a logger that
 	// simply discards the messages.
@@ -56,8 +57,8 @@ type Listener struct {
 	// connection sequence of RakNet.
 	id int64
 
-	// protocol is the protocol version that should be sent to clients.
-	protocol byte
+	// protocols is a list of protocol versions that are accepted by the listener.
+	protocols []byte
 
 	// pongData is a byte slice of data that is sent in an unconnected pong packet each time the client sends
 	// and unconnected ping to the server.
@@ -85,18 +86,18 @@ func (l ListenConfig) Listen(address string) (*Listener, error) {
 		return nil, &net.OpError{Op: "listen", Net: "raknet", Source: nil, Addr: nil, Err: err}
 	}
 	listener := &Listener{
-		closed:   make(chan struct{}),
-		conn:     conn,
-		id:       listenerID.Inc(),
-		incoming: make(chan *Conn),
-		log:      log.New(os.Stderr, "", log.LstdFlags),
-		protocol: currentProtocol,
+		closed:    make(chan struct{}),
+		conn:      conn,
+		id:        listenerID.Inc(),
+		incoming:  make(chan *Conn),
+		log:       log.New(os.Stderr, "", log.LstdFlags),
+		protocols: []byte{currentProtocol},
 	}
 	if l.ErrorLog != nil {
 		listener.log = l.ErrorLog
 	}
-	if l.ProtocolVersion != 0 {
-		listener.protocol = l.ProtocolVersion
+	if len(l.ProtocolVersions) > 0 {
+		listener.protocols = append(listener.protocols, l.ProtocolVersions...)
 	}
 
 	go listener.listen()
@@ -277,10 +278,10 @@ func (listener *Listener) handleOpenConnectionRequest1(b *bytes.Buffer, addr net
 		mtuSize = maxMTUSize
 	}
 
-	if packet.Protocol != listener.protocol {
-		(&message.IncompatibleProtocolVersion{ServerGUID: listener.id, ServerProtocol: listener.protocol}).Write(b)
+	if !slices.Contains(listener.protocols, packet.Protocol) {
+		(&message.IncompatibleProtocolVersion{ServerGUID: listener.id, ServerProtocol: currentProtocol}).Write(b)
 		_, _ = listener.conn.WriteTo(b.Bytes(), addr)
-		return fmt.Errorf("error handling open connection request 1: incompatible protocol version %v (listener protocol = %v)", packet.Protocol, listener.protocol)
+		return fmt.Errorf("error handling open connection request 1: incompatible protocol version %v (listener protocol = %v)", packet.Protocol, currentProtocol)
 	}
 
 	(&message.OpenConnectionReply1{ServerGUID: listener.id, Secure: false, ServerPreferredMTUSize: mtuSize}).Write(b)
