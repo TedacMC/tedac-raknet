@@ -4,8 +4,6 @@ import (
 	"net"
 	"strings"
 	"testing"
-
-	"github.com/sandertv/go-raknet"
 )
 
 func TestPing(t *testing.T) {
