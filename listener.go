@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/df-mc/atomic"
-	"github.com/tedacmc/tedac-raknet/internal/message"
+	"github.com/sandertv/go-raknet/internal/message"
 	"golang.org/x/exp/slices"
 	"log"
 	"math"

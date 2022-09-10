@@ -1,4 +1,4 @@
-module github.com/tedacmc/tedac-raknet
+module github.com/sandertv/go-raknet
 
 go 1.18
 

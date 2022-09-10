@@ -2,7 +2,6 @@ package raknet_test
 
 import (
 	"fmt"
-	"github.com/tedacmc/tedac-raknet"
 	"testing"
 	"time"
 )

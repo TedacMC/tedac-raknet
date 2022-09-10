@@ -21,7 +21,7 @@ Basic RakNet server:
 package main
 
 import (
-	"github.com/tedacmc/tedac-raknet"
+	"github.com/sandertv/go-raknet"
 )
 
 func main() {
@@ -45,7 +45,7 @@ Basic RakNet client:
 package main
 
 import (
-	"github.com/tedacmc/tedac-raknet"
+	"github.com/sandertv/go-raknet"
 )
 
 func main() {
@@ -59,7 +59,7 @@ func main() {
 ```
 
 ### Documentation
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/tedacmc/tedac-raknet)](https://pkg.go.dev/github.com/tedacmc/tedac-raknet)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/sandertv/go-raknet)](https://pkg.go.dev/github.com/sandertv/go-raknet)
 
 ## Contact
 [![Discord Banner 2](https://discordapp.com/api/guilds/623638955262345216/widget.png?style=banner2)](https://discord.gg/U4kFWHhTNR)
