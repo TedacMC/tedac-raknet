@@ -196,8 +196,6 @@ func (listener *Listener) handle(b *bytes.Buffer, addr net.Addr) error {
 			return listener.handleUnconnectedPing(b, addr)
 		case message.IDOpenConnectionRequest1:
 			return listener.handleOpenConnectionRequest1(b, addr)
-		case message.IDOpenConnectionRequest2:
-			return listener.handleOpenConnectionRequest2(b, addr)
 		default:
 			// In some cases, the client will keep trying to send datagrams while it has already timed out. In
 			// this case, we should not print an error.
@@ -221,27 +219,6 @@ func (listener *Listener) handle(b *bytes.Buffer, addr net.Addr) error {
 	}
 }
 
-// handleOpenConnectionRequest2 handles an open connection request 2 packet stored in buffer b, coming from
-// an address addr.
-func (listener *Listener) handleOpenConnectionRequest2(b *bytes.Buffer, addr net.Addr) error {
-	packet := &message.OpenConnectionRequest2{}
-	if err := packet.Read(b); err != nil {
-		return fmt.Errorf("error reading open connection request 2: %v", err)
-	}
-	b.Reset()
-
-	mtuSize := packet.ClientPreferredMTUSize
-	if mtuSize > maxMTUSize {
-		mtuSize = maxMTUSize
-	}
-
-	(&message.OpenConnectionReply2{ServerGUID: listener.id, ClientAddress: *addr.(*net.UDPAddr), MTUSize: mtuSize}).Write(b)
-	if _, err := listener.conn.WriteTo(b.Bytes(), addr); err != nil {
-		return fmt.Errorf("error sending open connection reply 2: %v", err)
-	}
-	return nil
-}
-
 // handleOpenConnectionRequest1 handles an open connection request 1 packet stored in buffer b, coming from
 // an address addr.
 func (listener *Listener) handleOpenConnectionRequest1(b *bytes.Buffer, addr net.Addr) error {
@@ -263,7 +240,15 @@ func (listener *Listener) handleOpenConnectionRequest1(b *bytes.Buffer, addr net
 	}
 
 	(&message.OpenConnectionReply1{ServerGUID: listener.id, Secure: false, ServerPreferredMTUSize: mtuSize}).Write(b)
-	_, err := listener.conn.WriteTo(b.Bytes(), addr)
+	if _, err := listener.conn.WriteTo(b.Bytes(), addr); err != nil {
+		return fmt.Errorf("error sending open connection reply 2: %v", err)
+	}
+	b.Reset()
+
+	(&message.OpenConnectionReply2{ServerGUID: listener.id, ClientAddress: *addr.(*net.UDPAddr), MTUSize: mtuSize}).Write(b)
+	if _, err := listener.conn.WriteTo(b.Bytes(), addr); err != nil {
+		return fmt.Errorf("error sending open connection reply 2: %v", err)
+	}
 
 	conn := newConn(listener.conn, addr, packet.Protocol, mtuSize)
 	conn.close = func() {
@@ -286,7 +271,7 @@ func (listener *Listener) handleOpenConnectionRequest1(b *bytes.Buffer, addr net
 			_ = conn.Close()
 		}
 	}()
-	return err
+	return nil
 }
 
 // handleUnconnectedPing handles an unconnected ping packet stored in buffer b, coming from an address addr.
