@@ -239,8 +239,33 @@ func (listener *Listener) handleOpenConnectionRequest2(b *bytes.Buffer, addr net
 	if _, err := listener.conn.WriteTo(b.Bytes(), addr); err != nil {
 		return fmt.Errorf("error sending open connection reply 2: %v", err)
 	}
+	return nil
+}
 
-	conn := newConn(listener.conn, addr, packet.ClientPreferredMTUSize)
+// handleOpenConnectionRequest1 handles an open connection request 1 packet stored in buffer b, coming from
+// an address addr.
+func (listener *Listener) handleOpenConnectionRequest1(b *bytes.Buffer, addr net.Addr) error {
+	packet := &message.OpenConnectionRequest1{}
+	if err := packet.Read(b); err != nil {
+		return fmt.Errorf("error reading open connection request 1: %v", err)
+	}
+	b.Reset()
+
+	mtuSize := packet.MaximumSizeNotDropped
+	if mtuSize > maxMTUSize {
+		mtuSize = maxMTUSize
+	}
+
+	if !slices.Contains(listener.protocols, packet.Protocol) {
+		(&message.IncompatibleProtocolVersion{ServerGUID: listener.id, ServerProtocol: currentProtocol}).Write(b)
+		_, _ = listener.conn.WriteTo(b.Bytes(), addr)
+		return fmt.Errorf("error handling open connection request 1: incompatible protocol version %v (listener protocol = %v)", packet.Protocol, currentProtocol)
+	}
+
+	(&message.OpenConnectionReply1{ServerGUID: listener.id, Secure: false, ServerPreferredMTUSize: mtuSize}).Write(b)
+	_, err := listener.conn.WriteTo(b.Bytes(), addr)
+
+	conn := newConn(listener.conn, addr, packet.Protocol, mtuSize)
 	conn.close = func() {
 		// Make sure to remove the connection from the Listener once the Conn is closed.
 		listener.connections.Delete(addr.String())
@@ -261,31 +286,6 @@ func (listener *Listener) handleOpenConnectionRequest2(b *bytes.Buffer, addr net
 			_ = conn.Close()
 		}
 	}()
-
-	return nil
-}
-
-// handleOpenConnectionRequest1 handles an open connection request 1 packet stored in buffer b, coming from
-// an address addr.
-func (listener *Listener) handleOpenConnectionRequest1(b *bytes.Buffer, addr net.Addr) error {
-	packet := &message.OpenConnectionRequest1{}
-	if err := packet.Read(b); err != nil {
-		return fmt.Errorf("error reading open connection request 1: %v", err)
-	}
-	b.Reset()
-	mtuSize := packet.MaximumSizeNotDropped
-	if mtuSize > maxMTUSize {
-		mtuSize = maxMTUSize
-	}
-
-	if !slices.Contains(listener.protocols, packet.Protocol) {
-		(&message.IncompatibleProtocolVersion{ServerGUID: listener.id, ServerProtocol: currentProtocol}).Write(b)
-		_, _ = listener.conn.WriteTo(b.Bytes(), addr)
-		return fmt.Errorf("error handling open connection request 1: incompatible protocol version %v (listener protocol = %v)", packet.Protocol, currentProtocol)
-	}
-
-	(&message.OpenConnectionReply1{ServerGUID: listener.id, Secure: false, ServerPreferredMTUSize: mtuSize}).Write(b)
-	_, err := listener.conn.WriteTo(b.Bytes(), addr)
 	return err
 }
 
@@ -300,9 +300,4 @@ func (listener *Listener) handleUnconnectedPing(b *bytes.Buffer, addr net.Addr) 
 	(&message.UnconnectedPong{ServerGUID: listener.id, SendTimestamp: pk.SendTimestamp, Data: listener.pongData.Load()}).Write(b)
 	_, err := listener.conn.WriteTo(b.Bytes(), addr)
 	return err
-}
-
-// timestamp returns a timestamp in milliseconds.
-func timestamp() int64 {
-	return time.Now().UnixNano() / int64(time.Second)
 }
