@@ -1,6 +1,7 @@
 package raknet_test
 
 import (
+	"github.com/sandertv/go-raknet"
 	"net"
 	"strings"
 	"testing"

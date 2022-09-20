@@ -1,6 +1,6 @@
 package raknet_test
 
-import raknet "github.com/sandertv/go-raknet"
+import "github.com/sandertv/go-raknet"
 
 func ExampleListen() {
 	const address = ":19132"

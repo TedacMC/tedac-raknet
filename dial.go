@@ -152,7 +152,7 @@ func (dialer Dialer) PingContext(ctx context.Context, address string) (response 
 	}
 
 	buffer := bytes.NewBuffer(nil)
-	(&message.UnconnectedPing{SendTimestamp: timestamp(), ClientGUID: atomic.AddInt64(&dialerID, 1)}).Write(buffer)
+	(&message.UnconnectedPing{SendTimestamp: time.Now().UnixMilli(), ClientGUID: atomic.AddInt64(&dialerID, 1)}).Write(buffer)
 	if _, err := conn.Write(buffer.Bytes()); err != nil {
 		return nil, &net.OpError{Op: "ping", Net: "raknet", Source: nil, Addr: nil, Err: actual(err)}
 	}
@@ -247,7 +247,7 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 		return nil, wrap(ctx, err)
 	}
 
-	conn := newConnWithLimits(&wrappedConn{PacketConn: packetConn}, udpConn.RemoteAddr(), uint16(atomic.LoadUint32(&state.mtuSize)), false)
+	conn := newConnWithLimits(&wrappedConn{PacketConn: packetConn}, udpConn.RemoteAddr(), state.protocol, uint16(atomic.LoadUint32(&state.mtuSize)), false)
 	conn.close = func() {
 		// We have to make the Conn call this method explicitly because it must not close the connection
 		// established by the Listener. (This would close the entire listener.)

@@ -46,6 +46,9 @@ type Conn struct {
 	seq, orderIndex, messageIndex uint24
 	splitID                       uint32
 
+	// protocol represents the protocol version the client is currently connected over.
+	protocol byte
+
 	// mtuSize is the MTU size of the connection. Packets longer than this size must be split into fragments
 	// for them to arrive at the client without losing bytes.
 	mtuSize uint16
@@ -80,14 +83,14 @@ type Conn struct {
 }
 
 // newConn constructs a new connection specifically dedicated to the address passed.
-func newConn(conn net.PacketConn, addr net.Addr, mtuSize uint16) *Conn {
-	return newConnWithLimits(conn, addr, mtuSize, true)
+func newConn(conn net.PacketConn, addr net.Addr, protocol byte, mtuSize uint16) *Conn {
+	return newConnWithLimits(conn, addr, protocol, mtuSize, true)
 }
 
 // newConnWithLimits returns a Conn for the net.Addr passed with a specific mtu size. The limits bool passed specifies
 // if the connection should limit the bounds of things such as the size of packets. This is generally recommended for
 // connections coming from a client.
-func newConnWithLimits(conn net.PacketConn, addr net.Addr, mtuSize uint16, limits bool) *Conn {
+func newConnWithLimits(conn net.PacketConn, addr net.Addr, protocol byte, mtuSize uint16, limits bool) *Conn {
 	if mtuSize < 500 || mtuSize > 1500 {
 		mtuSize = maxMTUSize
 	}
@@ -95,6 +98,7 @@ func newConnWithLimits(conn net.PacketConn, addr net.Addr, mtuSize uint16, limit
 		addr:           addr,
 		conn:           conn,
 		limits:         limits,
+		protocol:       protocol,
 		mtuSize:        mtuSize,
 		pk:             new(packet),
 		closed:         make(chan struct{}),
@@ -338,6 +342,11 @@ func (conn *Conn) LocalAddr() net.Addr {
 	return conn.conn.LocalAddr()
 }
 
+// ProtocolVersion returns the protocol version of the connection.
+func (conn *Conn) ProtocolVersion() byte {
+	return conn.protocol
+}
+
 // SetReadDeadline sets the read deadline of the connection. An error is returned only if the time passed is
 // before time.Now().
 // Calling SetReadDeadline means the next Read call that exceeds the deadline will fail and return an error.
@@ -374,7 +383,7 @@ func (conn *Conn) Latency() time.Duration {
 // sendPing pings the connection, updating the rtt of the Conn if successful.
 func (conn *Conn) sendPing() {
 	b := bytes.NewBuffer(nil)
-	(&message.ConnectedPing{ClientTimestamp: timestamp()}).Write(b)
+	(&message.ConnectedPing{ClientTimestamp: time.Now().UnixMilli()}).Write(b)
 	_, _ = conn.Write(b.Bytes())
 }
 
@@ -573,7 +582,7 @@ func (conn *Conn) handleConnectedPing(b *bytes.Buffer) error {
 
 	// Respond with a connected pong that has the ping timestamp found in the connected ping, and our own
 	// timestamp for the pong timestamp.
-	(&message.ConnectedPong{ClientTimestamp: packet.ClientTimestamp, ServerTimestamp: timestamp()}).Write(b)
+	(&message.ConnectedPong{ClientTimestamp: packet.ClientTimestamp, ServerTimestamp: time.Now().UnixMilli()}).Write(b)
 	_, err := conn.Write(b.Bytes())
 	return err
 }
@@ -585,7 +594,7 @@ func (conn *Conn) handleConnectedPong(b *bytes.Buffer) error {
 	if err := packet.Read(b); err != nil {
 		return fmt.Errorf("error reading connected pong: %v", err)
 	}
-	if packet.ClientTimestamp > timestamp() {
+	if packet.ClientTimestamp > time.Now().UnixMilli() {
 		return fmt.Errorf("error measuring rtt: ping timestamp is in the future")
 	}
 	// We don't actually use the ConnectedPong to measure rtt. It is too unreliable and doesn't give a
@@ -601,7 +610,7 @@ func (conn *Conn) handleConnectionRequest(b *bytes.Buffer) error {
 		return fmt.Errorf("error reading connection request: %v", err)
 	}
 	b.Reset()
-	(&message.ConnectionRequestAccepted{ClientAddress: *conn.addr.(*net.UDPAddr), RequestTimestamp: packet.RequestTimestamp, AcceptedTimestamp: timestamp()}).Write(b)
+	(&message.ConnectionRequestAccepted{ClientAddress: *conn.addr.(*net.UDPAddr), RequestTimestamp: packet.RequestTimestamp, AcceptedTimestamp: time.Now().UnixMilli()}).Write(b)
 	_, err := conn.Write(b.Bytes())
 	return err
 }
@@ -770,7 +779,7 @@ func (conn *Conn) resend(sequenceNumbers []uint24) (err error) {
 // An error occurs if the request was not successful.
 func (conn *Conn) requestConnection(id int64) error {
 	b := bytes.NewBuffer(nil)
-	(&message.ConnectionRequest{ClientGUID: id, RequestTimestamp: timestamp()}).Write(b)
+	(&message.ConnectionRequest{ClientGUID: id, RequestTimestamp: time.Now().UnixMilli()}).Write(b)
 	_, err := conn.Write(b.Bytes())
 	return err
 }
