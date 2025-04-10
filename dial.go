@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"net"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -89,7 +88,7 @@ type Dialer struct {
 
 	// ErrorLog is a logger that errors from packet decoding are logged to. It may be set to a logger that
 	// simply discards the messages.
-	ErrorLog *log.Logger
+	ErrorLog *slog.Logger
 
 	// UpstreamDialer is a dialer that will override the default dialer for opening outgoing connections.
 	UpstreamDialer UpstreamDialer
@@ -225,7 +224,7 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 
 	id := atomic.AddInt64(&dialerID, 1)
 	if dialer.ErrorLog == nil {
-		dialer.ErrorLog = log.New(os.Stderr, "", log.LstdFlags)
+		dialer.ErrorLog = slog.Default()
 	}
 	state := &connState{
 		conn:               udpConn,
@@ -282,7 +281,7 @@ func (conn *wrappedConn) WriteTo(b []byte, _ net.Addr) (n int, err error) {
 
 // clientListen makes the RakNet connection passed listen as a client for packets received in the connection
 // passed.
-func clientListen(rakConn *Conn, conn net.Conn, errorLog *log.Logger) {
+func clientListen(rakConn *Conn, conn net.Conn, errorLog *slog.Logger) {
 	// Create a buffer with the maximum size a UDP packet sent over RakNet is allowed to have. We can re-use
 	// this buffer for each packet.
 	b := make([]byte, 1500)
@@ -294,12 +293,12 @@ func clientListen(rakConn *Conn, conn net.Conn, errorLog *log.Logger) {
 				// The connection was closed, so we can return from the function without logging the error.
 				return
 			}
-			errorLog.Printf("client: error reading from Conn: %v", err)
+			errorLog.Error("client: error reading from Conn", "err", err)
 			return
 		}
 		buf.Write(b[:n])
 		if err := rakConn.receive(buf); err != nil {
-			errorLog.Printf("error handling packet: %v\n", err)
+			errorLog.Error("error handling packet", "err", err)
 		}
 		buf.Reset()
 	}

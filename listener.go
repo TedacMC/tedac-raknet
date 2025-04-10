@@ -6,11 +6,10 @@ import (
 	"github.com/df-mc/atomic"
 	"github.com/sandertv/go-raknet/internal/message"
 	"golang.org/x/exp/slices"
-	"log"
+	"log/slog"
 	"math"
 	"math/rand"
 	"net"
-	"os"
 	"sync"
 	"time"
 )
@@ -28,7 +27,7 @@ type ListenConfig struct {
 
 	// ErrorLog is a logger that errors from packet decoding are logged to. It may be set to a logger that
 	// simply discards the messages.
-	ErrorLog *log.Logger
+	ErrorLog *slog.Logger
 
 	// UpstreamPacketListener adds an abstraction for net.ListenPacket.
 	UpstreamPacketListener UpstreamPacketListener
@@ -43,7 +42,7 @@ type Listener struct {
 
 	// log is a logger that errors from packet decoding are logged to. It may be set to a logger that
 	// simply discards the messages.
-	log *log.Logger
+	log *slog.Logger
 
 	conn net.PacketConn
 	// incoming is a channel of incoming connections. Connections that end up in here will also end up in
@@ -90,7 +89,7 @@ func (l ListenConfig) Listen(address string) (*Listener, error) {
 		conn:      conn,
 		id:        listenerID.Inc(),
 		incoming:  make(chan *Conn),
-		log:       log.New(os.Stderr, "", log.LstdFlags),
+		log:       slog.Default(),
 		protocols: []byte{currentProtocol},
 	}
 	if l.ErrorLog != nil {
@@ -174,7 +173,7 @@ func (listener *Listener) listen() {
 		// Technically we should not re-use the same byte slice after its ownership has been taken by the
 		// buffer, but we can do this anyway because we copy the data later.
 		if err := listener.handle(buf, addr); err != nil {
-			listener.log.Printf("listener: error handling packet (addr = %v): %v\n", addr, err)
+			listener.log.Error("listener: error handling packet", "addr", addr, "err", err)
 		}
 		buf.Reset()
 	}
