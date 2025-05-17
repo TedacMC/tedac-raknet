@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/sandertv/go-raknet/internal"
 )
 
 // UpstreamPacketListener allows for a custom PacketListener implementation.
@@ -86,8 +88,7 @@ var listenerID = rand.Int64()
 // as the used log and/or the accepted protocol.
 func (conf ListenConfig) Listen(address string) (*Listener, error) {
 	if conf.ErrorLog == nil {
-		// conf.ErrorLog = slog.New(internal.DiscardHandler{})
-		conf.ErrorLog = slog.Default()
+		conf.ErrorLog = slog.New(internal.DiscardHandler{})
 	}
 	conf.ErrorLog = conf.ErrorLog.With("src", "listener")
 
