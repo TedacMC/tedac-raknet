@@ -66,7 +66,9 @@ func (h listenerConnectionHandler) handleUnconnected(b []byte, addr net.Addr) er
 	case message.IDOpenConnectionRequest1:
 		return h.handleOpenConnectionRequest1(b[1:], addr)
 	case message.IDOpenConnectionRequest2:
-		return h.handleOpenConnectionRequest2(b[1:], addr)
+		// We ignore this, since the connection is initialised within the first connection
+		// request.
+		return nil
 	}
 	if b[0]&bitFlagDatagram != 0 {
 		// In some cases, the client will keep trying to send datagrams
@@ -106,29 +108,17 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest1(b []byte, addr n
 	}
 
 	data, _ := (&message.OpenConnectionReply1{ServerGUID: h.l.id, Cookie: h.cookie(addr), ServerHasSecurity: !h.l.conf.DisableCookies, MTU: mtuSize}).MarshalBinary()
-	_, err := h.l.conn.WriteTo(data, addr)
-	return err
-}
-
-// handleOpenConnectionRequest2 handles an open connection request 2 packet
-// stored in buffer b, coming from an address.
-func (h listenerConnectionHandler) handleOpenConnectionRequest2(b []byte, addr net.Addr) error {
-	pk := &message.OpenConnectionRequest2{ServerHasSecurity: !h.l.conf.DisableCookies}
-	if err := pk.UnmarshalBinary(b); err != nil {
-		return fmt.Errorf("read OPEN_CONNECTION_REQUEST_2: %w", err)
+	if _, err := h.l.conn.WriteTo(data, addr); err != nil {
+		return fmt.Errorf("send OPEN_CONNECTION_REPLY_1: %v", err)
 	}
-	if expected := h.cookie(addr); pk.Cookie != expected {
-		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_2: invalid cookie '%x', expected '%x'", pk.Cookie, expected)
-	}
-	mtuSize := min(pk.MTU, maxMTUSize)
 
-	data, _ := (&message.OpenConnectionReply2{ServerGUID: h.l.id, ClientAddress: resolve(addr), MTU: mtuSize}).MarshalBinary()
+	data, _ = (&message.OpenConnectionReply2{ServerGUID: h.l.id, ClientAddress: resolve(addr), MTU: mtuSize}).MarshalBinary()
 	if _, err := h.l.conn.WriteTo(data, addr); err != nil {
 		return fmt.Errorf("send OPEN_CONNECTION_REPLY_2: %w", err)
 	}
 
 	go func() {
-		conn := newConn(h.l.conn, addr, protocolVersion, mtuSize, h)
+		conn := newConn(h.l.conn, addr, pk.ClientProtocol, mtuSize, h)
 		h.l.connections.Store(resolve(addr), conn)
 
 		t := time.NewTimer(time.Second * 10)
