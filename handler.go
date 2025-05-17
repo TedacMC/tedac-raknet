@@ -4,11 +4,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/sandertv/go-raknet/internal/message"
 	"hash/crc32"
 	"log/slog"
 	"net"
+	"slices"
 	"time"
+
+	"github.com/sandertv/go-raknet/internal/message"
 )
 
 type connectionHandler interface {
@@ -97,10 +99,10 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest1(b []byte, addr n
 	}
 	mtuSize := min(pk.MTU, maxMTUSize)
 
-	if pk.ClientProtocol != protocolVersion {
+	if !slices.Contains(h.l.protocols, pk.ClientProtocol) {
 		data, _ := (&message.IncompatibleProtocolVersion{ServerGUID: h.l.id, ServerProtocol: protocolVersion}).MarshalBinary()
 		_, _ = h.l.conn.WriteTo(data, addr)
-		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_1: incompatible protocol version %v (listener protocol = %v)", pk.ClientProtocol, protocolVersion)
+		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_1: incompatible protocol version %v (listener protocols = %v)", pk.ClientProtocol, h.l.protocols)
 	}
 
 	data, _ := (&message.OpenConnectionReply1{ServerGUID: h.l.id, Cookie: h.cookie(addr), ServerHasSecurity: !h.l.conf.DisableCookies, MTU: mtuSize}).MarshalBinary()
@@ -126,7 +128,7 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest2(b []byte, addr n
 	}
 
 	go func() {
-		conn := newConn(h.l.conn, addr, mtuSize, h)
+		conn := newConn(h.l.conn, addr, protocolVersion, mtuSize, h)
 		h.l.connections.Store(resolve(addr), conn)
 
 		t := time.NewTimer(time.Second * 10)

@@ -3,7 +3,6 @@ package raknet
 import (
 	"errors"
 	"fmt"
-	"github.com/sandertv/go-raknet/internal"
 	"log/slog"
 	"maps"
 	"math"
@@ -12,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/sandertv/go-raknet/internal"
 )
 
 // UpstreamPacketListener allows for a custom PacketListener implementation.
@@ -21,6 +22,9 @@ type UpstreamPacketListener interface {
 
 // ListenConfig may be used to pass additional configuration to a Listener.
 type ListenConfig struct {
+	// ProtocolVersions represents the protocol versions to allow over the network. If empty, this will just contain
+	ProtocolVersions []byte
+
 	// ErrorLog is a logger that errors from packet decoding are logged to. By
 	// default, ErrorLog is set to a new slog.Logger with a slog.Handler that
 	// is always disabled. Error messages are thus not logged by default.
@@ -66,6 +70,9 @@ type Listener struct {
 	// several times throughout the connection sequence of RakNet.
 	id int64
 
+	// protocols is a list of protocol versions that are accepted by the listener.
+	protocols []byte
+
 	// pongData is a byte slice of data that is sent in an unconnected pong
 	// packet each time the client sends and unconnected ping to the server.
 	pongData atomic.Pointer[[]byte]
@@ -100,12 +107,16 @@ func (conf ListenConfig) Listen(address string) (*Listener, error) {
 		return nil, &net.OpError{Op: "listen", Net: "raknet", Source: nil, Addr: nil, Err: err}
 	}
 	listener := &Listener{
-		conf:     conf,
-		conn:     conn,
-		incoming: make(chan *Conn),
-		closed:   make(chan struct{}),
-		id:       atomic.AddInt64(&listenerID, 1),
-		sec:      newSecurity(conf),
+		conf:      conf,
+		conn:      conn,
+		incoming:  make(chan *Conn),
+		closed:    make(chan struct{}),
+		id:        atomic.AddInt64(&listenerID, 1),
+		sec:       newSecurity(conf),
+		protocols: []byte{protocolVersion},
+	}
+	if len(conf.ProtocolVersions) > 0 {
+		listener.protocols = append(listener.protocols, conf.ProtocolVersions...)
 	}
 	listener.handler = &listenerConnectionHandler{l: listener, cookieSalt: rand.Uint32()}
 	listener.pongData.Store(new([]byte))
